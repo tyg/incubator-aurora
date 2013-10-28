@@ -9,22 +9,16 @@ incubation.
 
 ## Building
 These instructions have been tested on Mac OS X 10.8 and Ubuntu 13.04. You'll need build tools,
-OpenJDK 1.6+, and Maven.
-
-### Getting thrift and generating the RPC stubs
-A provided Makefile will compile the version of thrift needed to generate our RPC stubs,
-generate them, and install the generated jar in the local repository.
-
-    $ make -C thrift install
+OpenJDK 1.6+, and Gradle.
 
 ### Compiling and running tests
 
-The default maven target will compile aurora and run all tests.
+The default gradle task will compile aurora and run all tests.
 
-    $ mvn
+    $ gradle build
 
 ### Starting an Isolated Scheduler ("Demo Mode")
 To spin up a local scheduler in "demo mode". The web UI will appear on http://localhost:8081.
 http://localhost:8081/scheduler shows the state of all jobs under Aurora's control.
 
-    $ mvn -DskipTests package && ./demo.sh
+    $ gradle distZip && ./demo.sh

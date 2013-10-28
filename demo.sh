@@ -44,4 +44,10 @@ aurora_flags=(
 )
 
 set -x
-exec java "${jvm_flags[@]}" -jar target/aurora-1.0-SNAPSHOT.jar "${aurora_flags[@]}"
+
+DIST_DIR=build/distributions
+AURORA_DIR=build/distributions/aurora-scheduler
+rm -r ${AURORA_DIR} || true
+unzip ${DIST_DIR}/aurora-scheduler.zip -d ${DIST_DIR}
+JVM_OPTS="${jvm_flags[@]}" ./${AURORA_DIR}/bin/aurora-scheduler "${aurora_flags[@]}"
+
