@@ -45,9 +45,8 @@ aurora_flags=(
 
 set -x
 
-DIST_DIR=build/distributions
-AURORA_DIR=build/distributions/aurora-scheduler
-rm -r ${AURORA_DIR} || true
-unzip ${DIST_DIR}/aurora-scheduler.zip -d ${DIST_DIR}
-JVM_OPTS="${jvm_flags[@]}" ./${AURORA_DIR}/bin/aurora-scheduler "${aurora_flags[@]}"
-
+dist_dir=build/distributions
+aurora_dir=build/distributions/aurora-scheduler
+rm -rf "$aurora_dir"
+unzip "$dist_dir/aurora-scheduler.zip" -d "$dist_dir"
+JVM_OPTS="${jvm_flags[@]}" "./$aurora_dir/bin/aurora-scheduler" "${aurora_flags[@]}"

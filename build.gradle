@@ -68,8 +68,6 @@ dependencies {
   compile 'com.twitter.common:util-testing:0.0.6'
   compile 'com.twitter.common:util:0.0.83'
   compile 'com.twitter.common:zookeeper-testing:0.0.37'
-
-  // Begin test-only dependencies.
   testCompile 'junit:junit:4.10'
 }
 
