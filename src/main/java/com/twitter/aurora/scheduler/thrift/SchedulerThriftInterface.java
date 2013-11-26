@@ -369,6 +369,29 @@ class SchedulerThriftInterface implements AuroraAdmin.Iface {
     return response;
   }
 
+
+  public Response getRoleSummary() {
+//    LoadingCache<String, Role> owners =
+//        CacheBuilder.newBuilder().build(CacheLoader.from(CREATE_ROLE));
+//
+//    // TODO(William Farner): Render this page without an expensive query.
+//    Set<IScheduledTask> tasks =
+//        Storage.Util.weaklyConsistentFetchTasks(storage, Query.unscoped());
+//    for (ITaskConfig task : Iterables.transform(tasks, Tasks.SCHEDULED_TO_INFO)) {
+//      owners.getUnchecked(task.getOwner().getRole()).accumulate(task);
+//    }
+//
+//    // Add cron job counts for each role.
+//    for (IJobConfiguration job : cronScheduler.getJobs()) {
+//      owners.getUnchecked(job.getOwner().getRole()).accumulate(job);
+//    }
+//
+//    template.setAttribute(
+//        "owners",
+//        DisplayUtils.ROLE_ORDERING.sortedCopy(owners.asMap().values()));
+    return null;
+  }
+
   @Override
   public Response getJobs(@Nullable String maybeNullRole) {
     Optional<String> ownerRole = Optional.fromNullable(maybeNullRole);
