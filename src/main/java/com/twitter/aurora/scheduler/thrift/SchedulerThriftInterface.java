@@ -33,6 +33,9 @@ import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
 import com.google.common.base.Throwables;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
@@ -40,6 +43,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
+import com.google.common.collect.Ordering;
 
 import org.apache.commons.lang.StringUtils;
 
@@ -74,6 +78,8 @@ import com.twitter.aurora.gen.Response;
 import com.twitter.aurora.gen.ResponseCode;
 import com.twitter.aurora.gen.Result;
 import com.twitter.aurora.gen.RewriteConfigsRequest;
+import com.twitter.aurora.gen.RoleSummary;
+import com.twitter.aurora.gen.RoleSummaryResult;
 import com.twitter.aurora.gen.ScheduleStatus;
 import com.twitter.aurora.gen.ScheduleStatusResult;
 import com.twitter.aurora.gen.SessionKey;
@@ -369,27 +375,46 @@ class SchedulerThriftInterface implements AuroraAdmin.Iface {
     return response;
   }
 
-
+  @Override
   public Response getRoleSummary() {
-//    LoadingCache<String, Role> owners =
-//        CacheBuilder.newBuilder().build(CacheLoader.from(CREATE_ROLE));
-//
-//    // TODO(William Farner): Render this page without an expensive query.
-//    Set<IScheduledTask> tasks =
-//        Storage.Util.weaklyConsistentFetchTasks(storage, Query.unscoped());
-//    for (ITaskConfig task : Iterables.transform(tasks, Tasks.SCHEDULED_TO_INFO)) {
-//      owners.getUnchecked(task.getOwner().getRole()).accumulate(task);
-//    }
-//
-//    // Add cron job counts for each role.
-//    for (IJobConfiguration job : cronScheduler.getJobs()) {
-//      owners.getUnchecked(job.getOwner().getRole()).accumulate(job);
-//    }
-//
-//    template.setAttribute(
-//        "owners",
-//        DisplayUtils.ROLE_ORDERING.sortedCopy(owners.asMap().values()));
-    return null;
+    final Function<String, RoleSummary> CREATE_ROLE = new Function<String, RoleSummary>() {
+      @Override public RoleSummary apply(String ownerRole) {
+        RoleSummary role = new RoleSummary();
+        role.setRole(ownerRole);
+        role.setCronJobCount(0);
+        role.setJobCount(0);
+        return role;
+      }
+    };
+
+    final Ordering<RoleSummary> ROLE_ORDERING = Ordering.natural().onResultOf(
+        new Function<RoleSummary, String>() {
+          @Override public String apply(RoleSummary role) {
+            return role.getRole();
+          }
+        });
+
+    // TODO(Suman Karumuri): Respond to this request without an expensive query.
+    LoadingCache<String, RoleSummary> roleSummaries =
+        CacheBuilder.newBuilder().build(CacheLoader.from(CREATE_ROLE));
+
+    Set<IScheduledTask> tasks =
+        Storage.Util.weaklyConsistentFetchTasks(storage, Query.unscoped());
+    for (ITaskConfig task : Iterables.transform(tasks, Tasks.SCHEDULED_TO_INFO)) {
+      RoleSummary roleSummary = roleSummaries.getUnchecked(task.getOwner().getRole());
+      roleSummary.setJobCount(roleSummary.getJobCount() + 1);
+    }
+
+    // Add cron job counts for each role.
+    for (IJobConfiguration job : cronJobManager.getJobs()) {
+      RoleSummary roleSummary = roleSummaries.getUnchecked(job.getOwner().getRole());
+      roleSummary.setCronJobCount(roleSummary.getCronJobCount() + 1);
+    }
+
+    return new Response()
+        .setResponseCode(OK)
+        .setResult(Result.roleSummaryResult(
+            new RoleSummaryResult(ROLE_ORDERING.sortedCopy(roleSummaries.asMap().values()))));
   }
 
   @Override

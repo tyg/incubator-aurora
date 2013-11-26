@@ -391,7 +391,7 @@ struct EndMaintenanceResult {
 }
 
 struct RoleSummaryResult {
-  1: set<RoleSummary> summaries
+  1: list<RoleSummary> summaries
 }
 
 // Specifies validation level for the populateJobConfig.
