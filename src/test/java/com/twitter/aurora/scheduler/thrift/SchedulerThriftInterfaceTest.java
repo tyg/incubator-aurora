@@ -1034,6 +1034,39 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
   }
 
   @Test
+  public void testGetRoleSummary() throws Exception {
+    JobConfiguration cronJobOne = makeJob()
+        .setCronSchedule("1 * * * *")
+        .setKey(JOB_KEY.newBuilder())
+        .setTaskConfig(nonProductionTask());
+    JobKey jobKey2 = JOB_KEY.newBuilder().setRole("other_role");
+    JobConfiguration cronJobTwo = makeJob()
+        .setCronSchedule("2 * * * *")
+        .setKey(jobKey2)
+        .setTaskConfig(nonProductionTask());
+    TaskConfig immediateTaskConfig = defaultTask(false)
+        .setJobName("immediate")
+        .setOwner(ROLE_IDENTITY);
+    IScheduledTask immediateTask = IScheduledTask.build(new ScheduledTask()
+        .setAssignedTask(
+            new AssignedTask().setTask(immediateTaskConfig)));
+    JobConfiguration immediateJob = new JobConfiguration()
+        .setKey(JOB_KEY.newBuilder().setName("immediate"))
+        .setOwner(ROLE_IDENTITY)
+        .setInstanceCount(1)
+        .setTaskConfig(immediateTaskConfig);
+
+    Set<JobConfiguration> crons = ImmutableSet.of(cronJobOne, cronJobTwo);
+    expect(cronJobManager.getJobs()).andReturn(IJobConfiguration.setFromBuilders(crons));
+    storageUtil.expectTaskFetch(Query.unscoped().active(), immediateTask);
+
+    control.replay();
+
+    Response response = thrift.getRoleSummary();
+    assertEquals(ResponseCode.OK, response.getResponseCode());
+  }
+
+  @Test
   public void testSnapshot() throws Exception {
     expectAuth(ROOT, false);
 

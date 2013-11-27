@@ -377,7 +377,7 @@ class SchedulerThriftInterface implements AuroraAdmin.Iface {
 
   @Override
   public Response getRoleSummary() {
-    final Function<String, RoleSummary> CREATE_ROLE = new Function<String, RoleSummary>() {
+    final Function<String, RoleSummary> CREATE_ROLE_SUMMARY = new Function<String, RoleSummary>() {
       @Override public RoleSummary apply(String ownerRole) {
         RoleSummary role = new RoleSummary();
         role.setRole(ownerRole);
@@ -396,7 +396,7 @@ class SchedulerThriftInterface implements AuroraAdmin.Iface {
 
     // TODO(Suman Karumuri): Respond to this request without an expensive query.
     LoadingCache<String, RoleSummary> roleSummaries =
-        CacheBuilder.newBuilder().build(CacheLoader.from(CREATE_ROLE));
+        CacheBuilder.newBuilder().build(CacheLoader.from(CREATE_ROLE_SUMMARY));
 
     Set<IScheduledTask> tasks =
         Storage.Util.weaklyConsistentFetchTasks(storage, Query.unscoped());
