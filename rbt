@@ -1,0 +1,11 @@
+#!/bin/sh
+# Wrapper script for self-bootstrapping rbt.
+# TODO(ksweeney): Use ./pants py here instead of virtualenv.
+if ! [ -d build-support/rbtools ]; then
+  echo Bootstrapping rbtools
+  virtualenv build-support/rbtools
+  source build-support/rbtools/bin/activate
+  pip install RBTools==0.5
+fi
+source build-support/rbtools/bin/activate
+exec rbt "$@"

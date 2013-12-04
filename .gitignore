@@ -6,9 +6,9 @@
 .coverage
 .gradle/
 .pants.*
-.reviewboardrc
 .vagrant/
 build/
+build-support/rbtools/
 dist/
 gradle-app.setting
 out/

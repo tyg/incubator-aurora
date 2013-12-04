@@ -1,0 +1,2 @@
+REPOSITORY = "aurora"
+REVIEWBOARD_URL = "https://reviews.apache.org"
