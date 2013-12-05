@@ -57,6 +57,8 @@ import com.twitter.aurora.gen.Quota;
 import com.twitter.aurora.gen.Response;
 import com.twitter.aurora.gen.ResponseCode;
 import com.twitter.aurora.gen.RewriteConfigsRequest;
+import com.twitter.aurora.gen.RoleSummary;
+import com.twitter.aurora.gen.RoleSummaryResult;
 import com.twitter.aurora.gen.ScheduleStatus;
 import com.twitter.aurora.gen.ScheduledTask;
 import com.twitter.aurora.gen.SessionKey;
@@ -1035,35 +1037,62 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
 
   @Test
   public void testGetRoleSummary() throws Exception {
+    final String BAZ_ROLE = "baz_role";
+    final Identity BAZ_ROLE_IDENTITY = new Identity(BAZ_ROLE, USER);
+
     JobConfiguration cronJobOne = makeJob()
         .setCronSchedule("1 * * * *")
         .setKey(JOB_KEY.newBuilder())
         .setTaskConfig(nonProductionTask());
-    JobKey jobKey2 = JOB_KEY.newBuilder().setRole("other_role");
     JobConfiguration cronJobTwo = makeJob()
         .setCronSchedule("2 * * * *")
-        .setKey(jobKey2)
+        .setKey(JOB_KEY.newBuilder().setRole("other_role"))
         .setTaskConfig(nonProductionTask());
+
+    JobConfiguration cronJobThree = makeJob()
+        .setCronSchedule("3 * * * *")
+        .setKey(JOB_KEY.newBuilder().setRole(BAZ_ROLE))
+        .setTaskConfig(nonProductionTask())
+        .setOwner(BAZ_ROLE_IDENTITY);
+
+    Set<JobConfiguration> crons = ImmutableSet.of(cronJobOne, cronJobTwo, cronJobThree);
+
     TaskConfig immediateTaskConfig = defaultTask(false)
         .setJobName("immediate")
         .setOwner(ROLE_IDENTITY);
     IScheduledTask immediateTask = IScheduledTask.build(new ScheduledTask()
-        .setAssignedTask(
-            new AssignedTask().setTask(immediateTaskConfig)));
+        .setAssignedTask(new AssignedTask().setTask(immediateTaskConfig)));
     JobConfiguration immediateJob = new JobConfiguration()
         .setKey(JOB_KEY.newBuilder().setName("immediate"))
         .setOwner(ROLE_IDENTITY)
         .setInstanceCount(1)
         .setTaskConfig(immediateTaskConfig);
 
-    Set<JobConfiguration> crons = ImmutableSet.of(cronJobOne, cronJobTwo);
+    TaskConfig immediateTaskConfigTwo = defaultTask(false)
+        .setJobName("immediateTwo")
+        .setOwner(BAZ_ROLE_IDENTITY);
+    IScheduledTask immediateTaskTwo = IScheduledTask.build(new ScheduledTask()
+        .setAssignedTask(new AssignedTask().setTask(immediateTaskConfigTwo)));
+    JobConfiguration immediateJob2 = new JobConfiguration()
+        .setKey(JOB_KEY.newBuilder().setName("immediateTwo"))
+        .setOwner(BAZ_ROLE_IDENTITY)
+        .setInstanceCount(1)
+        .setTaskConfig(immediateTaskConfigTwo);
+
+    storageUtil.expectTaskFetch(Query.unscoped(), immediateTask, immediateTaskTwo);
     expect(cronJobManager.getJobs()).andReturn(IJobConfiguration.setFromBuilders(crons));
-    storageUtil.expectTaskFetch(Query.unscoped().active(), immediateTask);
+
+    RoleSummaryResult expectedResult = new RoleSummaryResult();
+    expectedResult.addToSummaries(
+        new RoleSummary().setRole(ROLE).setCronJobCount(2).setJobCount(1));
+    expectedResult.addToSummaries(
+        new RoleSummary().setRole(BAZ_ROLE).setCronJobCount(1).setJobCount(1));
 
     control.replay();
 
     Response response = thrift.getRoleSummary();
     assertEquals(ResponseCode.OK, response.getResponseCode());
+    assertEquals(expectedResult, response.getResult().getRoleSummaryResult());
   }
 
   @Test
