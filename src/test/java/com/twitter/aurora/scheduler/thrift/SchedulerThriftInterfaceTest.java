@@ -50,6 +50,8 @@ import com.twitter.aurora.gen.JobConfigRewrite;
 import com.twitter.aurora.gen.JobConfigValidation;
 import com.twitter.aurora.gen.JobConfiguration;
 import com.twitter.aurora.gen.JobKey;
+import com.twitter.aurora.gen.JobSummary;
+import com.twitter.aurora.gen.JobSummaryResult;
 import com.twitter.aurora.gen.LimitConstraint;
 import com.twitter.aurora.gen.Lock;
 import com.twitter.aurora.gen.LockKey;
@@ -57,8 +59,6 @@ import com.twitter.aurora.gen.Quota;
 import com.twitter.aurora.gen.Response;
 import com.twitter.aurora.gen.ResponseCode;
 import com.twitter.aurora.gen.RewriteConfigsRequest;
-import com.twitter.aurora.gen.RoleSummary;
-import com.twitter.aurora.gen.RoleSummaryResult;
 import com.twitter.aurora.gen.ScheduleStatus;
 import com.twitter.aurora.gen.ScheduledTask;
 import com.twitter.aurora.gen.SessionKey;
@@ -1082,17 +1082,17 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
     storageUtil.expectTaskFetch(Query.unscoped(), immediateTask, immediateTaskTwo);
     expect(cronJobManager.getJobs()).andReturn(IJobConfiguration.setFromBuilders(crons));
 
-    RoleSummaryResult expectedResult = new RoleSummaryResult();
+    JobSummaryResult expectedResult = new JobSummaryResult();
     expectedResult.addToSummaries(
-        new RoleSummary().setRole(ROLE).setCronJobCount(2).setJobCount(1));
+        new JobSummary().setRole(ROLE).setCronJobCount(2).setJobCount(1));
     expectedResult.addToSummaries(
-        new RoleSummary().setRole(BAZ_ROLE).setCronJobCount(1).setJobCount(1));
+        new JobSummary().setRole(BAZ_ROLE).setCronJobCount(1).setJobCount(1));
 
     control.replay();
 
-    Response response = thrift.getRoleSummary();
+    Response response = thrift.getJobSummary();
     assertEquals(ResponseCode.OK, response.getResponseCode());
-    assertEquals(expectedResult, response.getResult().getRoleSummaryResult());
+    assertEquals(expectedResult, response.getResult().getJobSummaryResult());
   }
 
   @Test

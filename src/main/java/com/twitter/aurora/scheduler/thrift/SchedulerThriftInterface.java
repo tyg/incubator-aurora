@@ -66,6 +66,8 @@ import com.twitter.aurora.gen.JobConfigRewrite;
 import com.twitter.aurora.gen.JobConfigValidation;
 import com.twitter.aurora.gen.JobConfiguration;
 import com.twitter.aurora.gen.JobKey;
+import com.twitter.aurora.gen.JobSummary;
+import com.twitter.aurora.gen.JobSummaryResult;
 import com.twitter.aurora.gen.ListBackupsResult;
 import com.twitter.aurora.gen.Lock;
 import com.twitter.aurora.gen.LockKey;
@@ -78,8 +80,6 @@ import com.twitter.aurora.gen.Response;
 import com.twitter.aurora.gen.ResponseCode;
 import com.twitter.aurora.gen.Result;
 import com.twitter.aurora.gen.RewriteConfigsRequest;
-import com.twitter.aurora.gen.RoleSummary;
-import com.twitter.aurora.gen.RoleSummaryResult;
 import com.twitter.aurora.gen.ScheduleStatus;
 import com.twitter.aurora.gen.ScheduleStatusResult;
 import com.twitter.aurora.gen.SessionKey;
@@ -376,45 +376,44 @@ class SchedulerThriftInterface implements AuroraAdmin.Iface {
   }
 
   @Override
-  public Response getRoleSummary() {
-    final Function<String, RoleSummary> CREATE_ROLE_SUMMARY = new Function<String, RoleSummary>() {
-      @Override public RoleSummary apply(String ownerRole) {
-        RoleSummary role = new RoleSummary();
-        role.setRole(ownerRole);
-        role.setCronJobCount(0);
-        role.setJobCount(0);
-        return role;
+  public Response getJobSummary() {
+    final Function<String, JobSummary> CREATE_JOB_SUMMARY = new Function<String, JobSummary>() {
+      @Override public JobSummary apply(String ownerRole) {
+        JobSummary summary = new JobSummary();
+        summary.setRole(ownerRole);
+        summary.setCronJobCount(0);
+        summary.setJobCount(0);
+        return summary;
       }
     };
 
-    final Ordering<RoleSummary> ROLE_ORDERING = Ordering.natural().onResultOf(
-        new Function<RoleSummary, String>() {
-          @Override public String apply(RoleSummary role) {
-            return role.getRole();
+    final Ordering<JobSummary> JOB_ORDERING = Ordering.natural().onResultOf(
+        new Function<JobSummary, String>() {
+          @Override public String apply(JobSummary jobSummary) {
+            return jobSummary.getRole();
           }
         });
 
     // TODO(Suman Karumuri): Respond to this request without an expensive query.
-    LoadingCache<String, RoleSummary> roleSummaries =
-        CacheBuilder.newBuilder().build(CacheLoader.from(CREATE_ROLE_SUMMARY));
+    LoadingCache<String, JobSummary> jobSummaries =
+        CacheBuilder.newBuilder().build(CacheLoader.from(CREATE_JOB_SUMMARY));
 
     Set<IScheduledTask> tasks =
         Storage.Util.weaklyConsistentFetchTasks(storage, Query.unscoped());
     for (ITaskConfig task : Iterables.transform(tasks, Tasks.SCHEDULED_TO_INFO)) {
-      RoleSummary roleSummary = roleSummaries.getUnchecked(task.getOwner().getRole());
-      roleSummary.setJobCount(roleSummary.getJobCount() + 1);
+      JobSummary jobSummary = jobSummaries.getUnchecked(task.getOwner().getRole());
+      jobSummary.setJobCount(jobSummary.getJobCount() + 1);
     }
 
-    // Add cron job counts for each role.
     for (IJobConfiguration job : cronJobManager.getJobs()) {
-      RoleSummary roleSummary = roleSummaries.getUnchecked(job.getOwner().getRole());
-      roleSummary.setCronJobCount(roleSummary.getCronJobCount() + 1);
+      JobSummary jobSummary = jobSummaries.getUnchecked(job.getOwner().getRole());
+      jobSummary.setCronJobCount(jobSummary.getCronJobCount() + 1);
     }
 
     return new Response()
         .setResponseCode(OK)
-        .setResult(Result.roleSummaryResult(
-            new RoleSummaryResult(ROLE_ORDERING.sortedCopy(roleSummaries.asMap().values()))));
+        .setResult(Result.jobSummaryResult(
+            new JobSummaryResult(JOB_ORDERING.sortedCopy(jobSummaries.asMap().values()))));
   }
 
   @Override

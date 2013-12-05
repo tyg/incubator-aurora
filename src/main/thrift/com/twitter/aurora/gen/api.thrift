@@ -356,7 +356,7 @@ struct HostStatus {
   2: MaintenanceMode mode
 }
 
-struct RoleSummary {
+struct JobSummary {
   1: string role
   2: i32 jobCount
   3: i32 cronJobCount
@@ -390,8 +390,8 @@ struct EndMaintenanceResult {
   1: set<HostStatus> statuses
 }
 
-struct RoleSummaryResult {
-  1: list<RoleSummary> summaries
+struct JobSummaryResult {
+  1: list<JobSummary> summaries
 }
 
 // Specifies validation level for the populateJobConfig.
@@ -413,7 +413,7 @@ union Result {
   11: EndMaintenanceResult endMaintenanceResult
   15: APIVersion getVersionResult
   16: AcquireLockResult acquireLockResult
-  17: RoleSummaryResult roleSummaryResult
+  17: JobSummaryResult jobSummaryResult
 }
 
 struct Response {
@@ -426,7 +426,7 @@ struct Response {
 // A service that provides all the read only calls to the Aurora scheduler.
 service ReadOnlyScheduler {
   // Returns a summary of the jobs grouped by role.
-  Response getRoleSummary()
+  Response getJobSummary()
 }
 
 // Due to assumptions in the client all authenticated RPCs must have a SessionKey as their
