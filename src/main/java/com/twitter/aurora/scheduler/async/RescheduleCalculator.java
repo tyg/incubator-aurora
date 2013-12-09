@@ -51,22 +51,25 @@ import static com.twitter.aurora.gen.ScheduleStatus.RESTARTING;
 /**
  * Calculates scheduling delays for tasks.
  */
-interface RescheduleCalculator {
+public interface RescheduleCalculator {
   /**
-   * Gets a timestamp for the task to become eligible for (re)scheduling at scheduler startup.
+   * Calculates the delay, in milliseconds, before the task should be considered eligible for
+   * (re)scheduling at scheduler startup.
    *
-   * @param task Task to calculate timestamp for.
-   * @return Timestamp in msec.
+   * @param task Task to calculate delay for.
+   * @return Delay in msec.
    */
-  long getStartupReadyTimeMs(IScheduledTask task);
+  long getStartupScheduleDelay(IScheduledTask task);
 
   /**
-   * Gets a timestamp for the task to become eligible for (re)scheduling.
+   * Calculates the penalty, in milliseconds, that a task should be
    *
    * @param task Task to calculate timestamp for.
    * @return Timestamp in msec.
    */
-  long getReadyTimeMs(IScheduledTask task);
+  long getFlappingPenaltyMs(IScheduledTask task);
+
+  // TODO(wfarner): Should there be a separate interface that StateManagerImpl uses here?
 
   class RescheduleCalculatorImpl implements RescheduleCalculator {
 
@@ -74,7 +77,6 @@ interface RescheduleCalculator {
 
     private final Storage storage;
     private final RescheduleCalculatorSettings settings;
-    private final Clock clock;
     private final Random random = new Random.SystemRandom(new java.util.Random());
 
     private static final Predicate<ScheduleStatus> IS_ACTIVE_STATUS =
@@ -142,32 +144,16 @@ interface RescheduleCalculator {
 
       this.storage = checkNotNull(storage);
       this.settings = checkNotNull(settings);
-      this.clock = checkNotNull(clock);
     }
 
     @Override
-    public long getStartupReadyTimeMs(IScheduledTask task) {
+    public long getStartupScheduleDelay(IScheduledTask task) {
       return random.nextInt(settings.maxStartupRescheduleDelay.as(Time.MILLISECONDS))
-          + getTaskReadyTimestamp(task);
+          + getFlappingPenaltyMs(task);
     }
 
     @Override
-    public long getReadyTimeMs(IScheduledTask task) {
-      return getTaskReadyTimestamp(task);
-    }
-
-    private Optional<IScheduledTask> getTaskAncestor(IScheduledTask task) {
-      if (!task.isSetAncestorId()) {
-        return Optional.absent();
-      }
-
-      ImmutableSet<IScheduledTask> res =
-          Storage.Util.weaklyConsistentFetchTasks(storage, Query.taskScoped(task.getAncestorId()));
-
-      return Optional.fromNullable(Iterables.getOnlyElement(res, null));
-    }
-
-    private long getTaskReadyTimestamp(IScheduledTask task) {
+    public long getFlappingPenaltyMs(IScheduledTask task) {
       Optional<IScheduledTask> curTask = getTaskAncestor(task);
       long penaltyMs = 0;
       while (curTask.isPresent() && flapped.apply(curTask.get())) {
@@ -182,7 +168,18 @@ interface RescheduleCalculator {
         curTask = getTaskAncestor(curTask.get());
       }
 
-      return penaltyMs + clock.nowMillis();
+      return penaltyMs;
+    }
+
+    private Optional<IScheduledTask> getTaskAncestor(IScheduledTask task) {
+      if (!task.isSetAncestorId()) {
+        return Optional.absent();
+      }
+
+      ImmutableSet<IScheduledTask> res =
+          Storage.Util.weaklyConsistentFetchTasks(storage, Query.taskScoped(task.getAncestorId()));
+
+      return Optional.fromNullable(Iterables.getOnlyElement(res, null));
     }
   }
 }

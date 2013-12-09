@@ -46,6 +46,7 @@ import com.twitter.aurora.gen.ScheduleStatus;
 import com.twitter.aurora.gen.ScheduledTask;
 import com.twitter.aurora.scheduler.Driver;
 import com.twitter.aurora.scheduler.TaskIdGenerator;
+import com.twitter.aurora.scheduler.async.RescheduleCalculator;
 import com.twitter.aurora.scheduler.base.Query;
 import com.twitter.aurora.scheduler.base.Tasks;
 import com.twitter.aurora.scheduler.events.PubsubEvent;
@@ -68,6 +69,7 @@ import static com.google.common.collect.Iterables.transform;
 
 import static com.twitter.aurora.gen.ScheduleStatus.INIT;
 import static com.twitter.aurora.gen.ScheduleStatus.PENDING;
+import static com.twitter.aurora.gen.ScheduleStatus.THROTTLED;
 import static com.twitter.aurora.gen.ScheduleStatus.UNKNOWN;
 import static com.twitter.aurora.scheduler.state.SideEffectStorage.OperationFinalizer;
 import static com.twitter.common.base.MorePreconditions.checkNotBlank;
@@ -82,13 +84,10 @@ import static com.twitter.common.base.MorePreconditions.checkNotBlank;
 public class StateManagerImpl implements StateManager {
   private static final Logger LOG = Logger.getLogger(StateManagerImpl.class.getName());
 
-  private final SideEffectStorage storage;
   @VisibleForTesting
   SideEffectStorage getStorage() {
     return storage;
   }
-
-  private final TaskIdGenerator taskIdGenerator;
 
   // Work queue to receive state machine side effect work.
   // Items are sorted to place DELETE entries last.  This is to ensure that within an operation,
@@ -129,8 +128,11 @@ public class StateManagerImpl implements StateManager {
         }
       };
 
-  private final Driver driver;
+  private final SideEffectStorage storage;
   private final Clock clock;
+  private final Driver driver;
+  private final TaskIdGenerator taskIdGenerator;
+  private final RescheduleCalculator rescheduleCalculator;
 
   /**
    * An item of work on the work queue.
@@ -157,7 +159,8 @@ public class StateManagerImpl implements StateManager {
       final Clock clock,
       Driver driver,
       TaskIdGenerator taskIdGenerator,
-      Closure<PubsubEvent> taskEventSink) {
+      Closure<PubsubEvent> taskEventSink,
+      RescheduleCalculator rescheduleCalculator) {
 
     checkNotNull(storage);
     this.clock = checkNotNull(clock);
@@ -172,6 +175,7 @@ public class StateManagerImpl implements StateManager {
 
     this.driver = checkNotNull(driver);
     this.taskIdGenerator = checkNotNull(taskIdGenerator);
+    this.rescheduleCalculator = checkNotNull(rescheduleCalculator);
 
     Stats.exportSize("work_queue_depth", workQueue);
   }
@@ -335,8 +339,9 @@ public class StateManagerImpl implements StateManager {
 
         switch (work.command) {
           case RESCHEDULE:
-            ScheduledTask builder =
-                Iterables.getOnlyElement(taskStore.fetchTasks(idQuery)).newBuilder();
+            IScheduledTask ancestor = Iterables.getOnlyElement(taskStore.fetchTasks(idQuery));
+
+            ScheduledTask builder = ancestor.newBuilder();
             builder.getAssignedTask().unsetSlaveId();
             builder.getAssignedTask().unsetSlaveHost();
             builder.getAssignedTask().unsetAssignedPorts();
@@ -352,7 +357,16 @@ public class StateManagerImpl implements StateManager {
             IScheduledTask task = IScheduledTask.build(builder);
             taskStore.saveTasks(ImmutableSet.of(task));
 
-            createStateMachine(task).updateState(PENDING, Optional.of("Rescheduled"));
+            ScheduleStatus newState = PENDING;
+            String auditMessage = "Rescheduled";
+            long flapPenaltyMs = rescheduleCalculator.getFlappingPenaltyMs(ancestor);
+            if (flapPenaltyMs > 0) {
+              newState = THROTTLED;
+              auditMessage =
+                  String.format("Rescheduled, penalized for %s ms for flapping", flapPenaltyMs);
+            }
+
+            createStateMachine(task).updateState(newState, Optional.of(auditMessage));
             ITaskConfig taskInfo = task.getAssignedTask().getTask();
             sideEffectWork.addTaskEvent(
                 new PubsubEvent.TaskRescheduled(

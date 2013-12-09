@@ -255,7 +255,8 @@ enum ScheduleStatus {
 }
 
 // States that a task may be in while still considered active.
-const set<ScheduleStatus> ACTIVE_STATES = [ScheduleStatus.PENDING,
+const set<ScheduleStatus> ACTIVE_STATES = [ScheduleStatus.THROTTLED,
+                                           ScheduleStatus.PENDING,
                                            ScheduleStatus.ASSIGNED,
                                            ScheduleStatus.STARTING,
                                            ScheduleStatus.RUNNING,
