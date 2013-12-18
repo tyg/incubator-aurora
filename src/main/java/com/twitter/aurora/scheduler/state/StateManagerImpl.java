@@ -367,12 +367,6 @@ public class StateManagerImpl implements StateManager {
             }
 
             createStateMachine(task).updateState(newState, Optional.of(auditMessage));
-            ITaskConfig taskInfo = task.getAssignedTask().getTask();
-            sideEffectWork.addTaskEvent(
-                new PubsubEvent.TaskRescheduled(
-                    taskInfo.getOwner().getRole(),
-                    taskInfo.getJobName(),
-                    task.getAssignedTask().getInstanceId()));
             break;
 
           case UPDATE_STATE:

@@ -36,6 +36,7 @@ import com.twitter.aurora.scheduler.storage.entities.IScheduledTask;
 import com.twitter.common.testing.easymock.EasyMockTest;
 import com.twitter.common.util.testing.FakeClock;
 
+import static com.twitter.aurora.gen.ScheduleStatus.THROTTLED;
 import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expectLastCall;
 import static org.hamcrest.CoreMatchers.is;
@@ -315,6 +316,15 @@ public class TaskStateMachineTest extends EasyMockTest {
     control.replay();
 
     transition(stateMachine, PENDING, ASSIGNED, STARTING, RUNNING, KILLING, KILLED);
+  }
+
+  @Test
+  public void testThrottledTask() {
+    expectWork(UPDATE_STATE).times(2);
+
+    control.replay();
+
+    transition(stateMachine, THROTTLED, PENDING);
   }
 
   private static void transition(TaskStateMachine stateMachine, ScheduleStatus... states) {

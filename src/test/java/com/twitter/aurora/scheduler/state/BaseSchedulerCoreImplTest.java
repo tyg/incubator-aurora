@@ -41,6 +41,7 @@ import com.google.common.collect.Sets;
 
 import org.apache.mesos.Protos.SlaveID;
 import org.easymock.EasyMock;
+import org.easymock.IExpectationSetters;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -60,6 +61,7 @@ import com.twitter.aurora.gen.TaskQuery;
 import com.twitter.aurora.gen.ValueConstraint;
 import com.twitter.aurora.scheduler.Driver;
 import com.twitter.aurora.scheduler.TaskIdGenerator;
+import com.twitter.aurora.scheduler.async.RescheduleCalculator;
 import com.twitter.aurora.scheduler.base.JobKeys;
 import com.twitter.aurora.scheduler.base.Query;
 import com.twitter.aurora.scheduler.base.ScheduleException;
@@ -75,7 +77,6 @@ import com.twitter.aurora.scheduler.storage.Storage.MutableStoreProvider;
 import com.twitter.aurora.scheduler.storage.Storage.MutateWork;
 import com.twitter.aurora.scheduler.storage.StorageBackfill;
 import com.twitter.aurora.scheduler.storage.entities.IAssignedTask;
-import com.twitter.aurora.scheduler.storage.entities.IIdentity;
 import com.twitter.aurora.scheduler.storage.entities.IJobConfiguration;
 import com.twitter.aurora.scheduler.storage.entities.IJobKey;
 import com.twitter.aurora.scheduler.storage.entities.IScheduledTask;
@@ -139,6 +140,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
   private CronJobManager cron;
   private FakeClock clock;
   private Closure<PubsubEvent> eventSink;
+  private RescheduleCalculator rescheduleCalculator;
   private ShutdownRegistry shutdownRegistry;
   private JobFilter jobFilter;
 
@@ -156,6 +158,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     clock = new FakeClock();
     eventSink = createMock(new Clazz<Closure<PubsubEvent>>() { });
     eventSink.execute(EasyMock.<PubsubEvent>anyObject());
+    rescheduleCalculator = createMock(RescheduleCalculator.class);
     cronScheduler = createMock(CronScheduler.class);
     shutdownRegistry = createMock(ShutdownRegistry.class);
     jobFilter = createMock(JobFilter.class);
@@ -186,12 +189,19 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
   private void buildScheduler(Storage newStorage) throws Exception {
     this.storage = newStorage;
     storage.write(new MutateWork.NoResult.Quiet() {
-      @Override protected void execute(MutableStoreProvider storeProvider) {
+      @Override
+      protected void execute(MutableStoreProvider storeProvider) {
         StorageBackfill.backfill(storeProvider, clock);
       }
     });
 
-    stateManager = new StateManagerImpl(storage, clock, driver, taskIdGenerator, eventSink);
+    stateManager = new StateManagerImpl(
+        storage,
+        clock,
+        driver,
+        taskIdGenerator,
+        eventSink,
+        rescheduleCalculator);
     ImmediateJobManager immediateManager = new ImmediateJobManager(stateManager, storage);
     cron = new CronJobManager(stateManager, storage, cronScheduler, shutdownRegistry);
     scheduler = new SchedulerCoreImpl(
@@ -414,16 +424,6 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     }
   }
 
-  @Test
-  public void testSortableTaskIds() throws Exception {
-    control.replay();
-    buildScheduler();
-
-    for (IScheduledTask task : getTasks(Query.unscoped())) {
-      assertEquals(IIdentity.build(OWNER_A), task.getAssignedTask().getTask().getOwner());
-    }
-  }
-
   @Test(expected = ScheduleException.class)
   public void testCreateDuplicateJob() throws Exception {
     control.replay();
@@ -579,7 +579,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     assertTaskCount(1);
     assertEquals(PENDING, getTask(taskId).getStatus());
 
-    changeStatus(Query.taskScoped(taskId), ASSIGNED);
+    changeStatus(taskId, ASSIGNED);
 
     scheduler.startCronJob(KEY_A);
     assertTaskCount(2);
@@ -651,20 +651,28 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     }
   }
 
+  private IExpectationSetters<Long> expectTaskNotThrottled() {
+    return expect(rescheduleCalculator.getFlappingPenaltyMs(EasyMock.<IScheduledTask>anyObject()))
+        .andReturn(0L);
+  }
+
   @Test
   public void testServiceTasksRescheduled() throws Exception {
+    int numServiceTasks = 5;
+
+    expectTaskNotThrottled().times(numServiceTasks);
+
     control.replay();
     buildScheduler();
 
     // Schedule 5 service and 5 non-service tasks.
-    scheduler.createJob(makeJob(KEY_A, 5));
+    scheduler.createJob(makeJob(KEY_A, numServiceTasks));
     TaskConfig task = productionTask().setIsService(true);
     scheduler.createJob(
         makeJob(IJobKey.build(KEY_A.newBuilder().setName(KEY_A.getName() + "service")), task, 5));
 
     assertEquals(10, getTasksByStatus(PENDING).size());
-    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED);
-    changeStatus(Query.roleScoped(ROLE_A), STARTING);
+    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED, STARTING);
     assertEquals(10, getTasksByStatus(STARTING).size());
 
     changeStatus(Query.roleScoped(ROLE_A), RUNNING);
@@ -685,11 +693,14 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
 
   @Test
   public void testServiceTaskIgnoresMaxFailures() throws Exception {
+    int totalFailures = 10;
+
+    expectTaskNotThrottled().times(totalFailures);
+
     control.replay();
     buildScheduler();
 
     int maxFailures = 5;
-    int totalFailures = 10;
 
     // Schedule a service task.
     TaskConfig task = productionTask()
@@ -703,9 +714,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
       String taskId = Tasks.id(
           getOnlyTask(Query.jobScoped(KEY_A).active()));
 
-      changeStatus(taskId, ASSIGNED);
-      changeStatus(taskId, STARTING);
-      changeStatus(taskId, RUNNING);
+      changeStatus(taskId, ASSIGNED, STARTING, RUNNING);
       assertEquals(i - 1, getTask(taskId).getFailureCount());
       changeStatus(taskId, FAILED);
 
@@ -720,27 +729,26 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
 
   @Test
   public void testTaskRescheduleOnKill() throws Exception {
+    int numServiceTasks = 5;
+
+    expectTaskNotThrottled().times(numServiceTasks);
+
     control.replay();
     buildScheduler();
 
-    // Create 5 non-service and 5 service tasks.
-    scheduler.createJob(makeJob(KEY_A, 5));
-    TaskConfig task = productionTask().setIsService(true);
-    scheduler.createJob(
-        makeJob(IJobKey.build(KEY_A.newBuilder().setName(KEY_A.getName() + "service")), task, 5));
+    scheduler.createJob(makeJob(KEY_A, numServiceTasks));
 
-    assertEquals(10, getTasksByStatus(PENDING).size());
-    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED);
-    changeStatus(Query.roleScoped(ROLE_A), STARTING);
-    assertEquals(10, getTasksByStatus(STARTING).size());
+    assertEquals(5, getTasksByStatus(PENDING).size());
+    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED, STARTING);
+    assertEquals(5, getTasksByStatus(STARTING).size());
     changeStatus(Query.roleScoped(ROLE_A), RUNNING);
-    assertEquals(10, getTasksByStatus(RUNNING).size());
+    assertEquals(5, getTasksByStatus(RUNNING).size());
 
     // All tasks will move back into PENDING state after getting KILLED.
     changeStatus(Query.roleScoped(ROLE_A), KILLED);
     Set<IScheduledTask> newTasks = getTasksByStatus(PENDING);
-    assertEquals(10, newTasks.size());
-    assertEquals(10, getTasksByStatus(KILLED).size());
+    assertEquals(5, newTasks.size());
+    assertEquals(5, getTasksByStatus(KILLED).size());
   }
 
   @Test
@@ -751,9 +759,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     buildScheduler();
 
     scheduler.createJob(makeJob(KEY_A, 1));
-    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED);
-    changeStatus(Query.roleScoped(ROLE_A), STARTING);
-    changeStatus(Query.roleScoped(ROLE_A), RUNNING);
+    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED, STARTING, RUNNING);
     scheduler.killTasks(Query.roleScoped(ROLE_A), OWNER_A.getUser());
     changeStatus(Query.roleScoped(ROLE_A), KILLED);
 
@@ -767,6 +773,8 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
   @Test
   public void testFailedTaskIncrementsFailureCount() throws Exception {
     int maxFailures = 5;
+    expectTaskNotThrottled().times(maxFailures - 1);
+
     control.replay();
     buildScheduler();
 
@@ -780,9 +788,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
       String taskId = Tasks.id(getOnlyTask(
           Query.jobScoped(KEY_A).active()));
 
-      changeStatus(taskId, ASSIGNED);
-      changeStatus(taskId, STARTING);
-      changeStatus(taskId, RUNNING);
+      changeStatus(taskId, ASSIGNED, STARTING, RUNNING);
       assertEquals(i - 1, getTask(taskId).getFailureCount());
       changeStatus(taskId, FAILED);
 
@@ -821,8 +827,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
 
     assertTaskCount(10);
 
-    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED);
-    changeStatus(Query.roleScoped(ROLE_A), STARTING);
+    changeStatus(Query.roleScoped(ROLE_A), ASSIGNED, STARTING);
     assertTaskCount(10);
     changeStatus(Query.roleScoped(ROLE_A), RUNNING);
     assertTaskCount(10);
@@ -897,9 +902,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
 
     scheduler.createJob(makeJob(KEY_A, 1));
     String taskId = Tasks.id(getOnlyTask(Query.roleScoped(ROLE_A)));
-    changeStatus(taskId, ASSIGNED);
-    changeStatus(taskId, STARTING);
-    changeStatus(taskId, RUNNING);
+    changeStatus(taskId, ASSIGNED, STARTING, RUNNING);
     scheduler.killTasks(Query.taskScoped(taskId), OWNER_A.getUser());
     assertEquals(KILLING, getTask(taskId).getStatus());
     assertEquals(1, getTasks(Query.roleScoped(ROLE_A)).size());
@@ -927,29 +930,25 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
   @Test
   public void testLostTaskRescheduled() throws Exception {
     expectKillTask(2);
+    expectTaskNotThrottled().times(2);
 
     control.replay();
     buildScheduler();
 
-    int maxFailures = 5;
-    TaskConfig task = productionTask().setMaxTaskFailures(maxFailures);
-    scheduler.createJob(makeJob(KEY_A, task, 1));
+    scheduler.createJob(makeJob(KEY_A, 1));
     assertTaskCount(1);
 
     Set<IScheduledTask> tasks = Storage.Util.consistentFetchTasks(storage, Query.jobScoped(KEY_A));
+    String taskId = Tasks.id(getOnlyTask(Query.roleScoped(ROLE_A)));
     assertEquals(1, tasks.size());
 
-    changeStatus(Query.unscoped().byStatus(PENDING), ASSIGNED);
+    changeStatus(taskId, ASSIGNED, LOST);
 
-    Query.Builder pendingQuery = Query.unscoped().byStatus(PENDING);
-    changeStatus(Query.unscoped().byStatus(ASSIGNED), LOST);
-    assertEquals(PENDING, getOnlyTask(pendingQuery).getStatus());
-    assertTaskCount(2);
+    String newTaskId = Tasks.id(getOnlyTask(Query.unscoped().byStatus(PENDING)));
+    assertFalse(newTaskId.equals(taskId));
 
-    changeStatus(Query.unscoped().byStatus(PENDING), ASSIGNED);
-    changeStatus(Query.unscoped().byStatus(ASSIGNED), LOST);
-    assertEquals(PENDING, getOnlyTask(pendingQuery).getStatus());
-    assertTaskCount(3);
+    changeStatus(newTaskId, ASSIGNED, LOST);
+    assertFalse(newTaskId.equals(Tasks.id(getOnlyTask(Query.unscoped().byStatus(PENDING)))));
   }
 
   @Test
@@ -1019,6 +1018,8 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
 
   @Test
   public void testSlaveDeletesTasks() throws Exception {
+    expectTaskNotThrottled();
+
     control.replay();
     buildScheduler();
 
@@ -1031,10 +1032,8 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     assignTask(taskId1, SLAVE_ID, SLAVE_HOST_1);
     assignTask(taskId2, SLAVE_ID, SLAVE_HOST_1);
 
-    changeStatus(taskId1, STARTING);
-    changeStatus(taskId1, RUNNING);
-    changeStatus(taskId2, STARTING);
-    changeStatus(taskId2, FINISHED);
+    changeStatus(taskId1, STARTING, RUNNING);
+    changeStatus(taskId2, STARTING, FINISHED);
 
     scheduler.tasksDeleted(ImmutableSet.of(taskId1, taskId2));
 
@@ -1051,13 +1050,13 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
   @Test
   public void testRestartShards() throws Exception {
     expectKillTask(2);
+    expectTaskNotThrottled().times(2);
 
     control.replay();
     buildScheduler();
 
     scheduler.createJob(makeJob(KEY_A, productionTask().setIsService(true), 6));
-    changeStatus(Query.jobScoped(KEY_A), ASSIGNED);
-    changeStatus(Query.jobScoped(KEY_A), RUNNING);
+    changeStatus(Query.jobScoped(KEY_A), ASSIGNED, RUNNING);
     scheduler.restartShards(KEY_A, ImmutableSet.of(1, 5), OWNER_A.user);
     assertEquals(4, getTasks(Query.unscoped().byStatus(RUNNING)).size());
     assertEquals(2, getTasks(Query.unscoped().byStatus(RESTARTING)).size());
@@ -1067,12 +1066,13 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
 
   @Test(expected = ScheduleException.class)
   public void testRestartNonexistentShard() throws Exception {
+    expectTaskNotThrottled();
+
     control.replay();
     buildScheduler();
 
     scheduler.createJob(makeJob(KEY_A, productionTask().setIsService(true), 1));
-    changeStatus(Query.jobScoped(KEY_A), ASSIGNED);
-    changeStatus(Query.jobScoped(KEY_A), FINISHED);
+    changeStatus(Query.jobScoped(KEY_A), ASSIGNED, FINISHED);
     scheduler.restartShards(KEY_A, ImmutableSet.of(5), OWNER_A.user);
   }
 
@@ -1109,6 +1109,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
   @Test
   public void testPortResourceResetAfterReschedule() throws Exception {
     expectKillTask(1);
+    expectTaskNotThrottled();
 
     control.replay();
     buildScheduler();
@@ -1141,8 +1142,7 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     scheduler.createJob(makeJob(KEY_A, 1));
 
     String taskId = Tasks.id(getOnlyTask(Query.roleScoped(ROLE_A)));
-    changeStatus(taskId, ASSIGNED);
-    changeStatus(taskId, STARTING);
+    changeStatus(taskId, ASSIGNED, STARTING);
     changeStatus(taskId, FAILED, Optional.of("bad stuff happened"));
 
     String hostname = getLocalHost();
@@ -1458,12 +1458,16 @@ public abstract class BaseSchedulerCoreImplTest extends EasyMockTest {
     scheduler.setTaskStatus(query, status, message);
   }
 
-  public void changeStatus(Query.Builder query, ScheduleStatus status) {
-    changeStatus(query, status, Optional.<String>absent());
+  public void changeStatus(Query.Builder query, ScheduleStatus status, ScheduleStatus... statuses) {
+    for (ScheduleStatus nextStatus
+        : ImmutableList.<ScheduleStatus>builder().add(status).add(statuses).build()) {
+
+      changeStatus(query, nextStatus, Optional.<String>absent());
+    }
   }
 
-  public void changeStatus(String taskId, ScheduleStatus status) {
-    changeStatus(taskId, status, Optional.<String>absent());
+  public void changeStatus(String taskId, ScheduleStatus status, ScheduleStatus... statuses) {
+    changeStatus(Query.taskScoped(taskId), status, statuses);
   }
 
   public void changeStatus(String taskId, ScheduleStatus status, Optional<String> message) {

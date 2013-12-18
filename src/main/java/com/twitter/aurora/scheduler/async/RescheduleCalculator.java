@@ -40,7 +40,6 @@ import com.twitter.aurora.scheduler.storage.entities.ITaskEvent;
 import com.twitter.common.quantity.Amount;
 import com.twitter.common.quantity.Time;
 import com.twitter.common.util.BackoffStrategy;
-import com.twitter.common.util.Clock;
 import com.twitter.common.util.Random;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -137,11 +136,7 @@ public interface RescheduleCalculator {
     }
 
     @Inject
-    RescheduleCalculatorImpl(
-        Storage storage,
-        RescheduleCalculatorSettings settings,
-        Clock clock) {
-
+    RescheduleCalculatorImpl(Storage storage, RescheduleCalculatorSettings settings) {
       this.storage = checkNotNull(storage);
       this.settings = checkNotNull(settings);
     }

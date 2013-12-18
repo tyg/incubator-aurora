@@ -42,6 +42,7 @@ import com.twitter.aurora.gen.TaskConfig;
 import com.twitter.aurora.gen.TaskEvent;
 import com.twitter.aurora.scheduler.Driver;
 import com.twitter.aurora.scheduler.TaskIdGenerator;
+import com.twitter.aurora.scheduler.async.RescheduleCalculator;
 import com.twitter.aurora.scheduler.base.Query;
 import com.twitter.aurora.scheduler.base.Tasks;
 import com.twitter.aurora.scheduler.events.PubsubEvent;
@@ -55,6 +56,8 @@ import com.twitter.common.base.Closure;
 import com.twitter.common.testing.easymock.EasyMockTest;
 import com.twitter.common.util.testing.FakeClock;
 
+import static com.twitter.aurora.gen.ScheduleStatus.FAILED;
+import static com.twitter.aurora.gen.ScheduleStatus.THROTTLED;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.expectLastCall;
 import static org.junit.Assert.assertEquals;
@@ -76,6 +79,7 @@ public class StateManagerImplTest extends EasyMockTest {
 
   private Driver driver;
   private TaskIdGenerator taskIdGenerator;
+  private RescheduleCalculator rescheduleCalculator;
   private Closure<PubsubEvent> eventSink;
   private StateManagerImpl stateManager;
   private final FakeClock clock = new FakeClock();
@@ -86,9 +90,16 @@ public class StateManagerImplTest extends EasyMockTest {
     taskIdGenerator = createMock(TaskIdGenerator.class);
     driver = createMock(Driver.class);
     eventSink = createMock(new Clazz<Closure<PubsubEvent>>() { });
+    rescheduleCalculator = createMock(RescheduleCalculator.class);
     // TODO(William Farner): Use a mocked storage.
     storage = MemStorage.newEmptyStorage();
-    stateManager = new StateManagerImpl(storage, clock, driver, taskIdGenerator, eventSink);
+    stateManager = new StateManagerImpl(
+        storage,
+        clock,
+        driver,
+        taskIdGenerator,
+        eventSink,
+        rescheduleCalculator);
   }
 
   @After
@@ -226,7 +237,8 @@ public class StateManagerImplTest extends EasyMockTest {
     // Trigger an event that produces a side-effect and a PubSub event .
     eventSink.execute(matchStateChange(id, INIT, PENDING));
     expectLastCall().andAnswer(new IAnswer<Void>() {
-      @Override public Void answer() throws Throwable {
+      @Override
+      public Void answer() throws Throwable {
         stateManager.changeState(
             Query.unscoped(), ScheduleStatus.ASSIGNED, Optional.<String>absent());
         return null;
@@ -253,6 +265,26 @@ public class StateManagerImplTest extends EasyMockTest {
 
     insertTask(task, 0);
     stateManager.deleteTasks(ImmutableSet.of(taskId));
+  }
+
+  @Test
+  public void testThrottleTask() {
+    ITaskConfig task = ITaskConfig.build(makeTask(JIM, MY_JOB).newBuilder().setIsService(true));
+    String taskId = "a";
+    expect(taskIdGenerator.generate(task, 0)).andReturn(taskId);
+    expectStateTransitions(taskId, INIT, PENDING, ASSIGNED, RUNNING, FAILED);
+    String newTaskId = "b";
+    expect(taskIdGenerator.generate(task, 0)).andReturn(newTaskId);
+    expect(rescheduleCalculator.getFlappingPenaltyMs(EasyMock.<IScheduledTask>anyObject()))
+        .andReturn(100L);
+    expectStateTransitions(newTaskId, INIT, THROTTLED);
+
+    control.replay();
+
+    insertTask(task, 0);
+    stateManager.changeState(Query.taskScoped(taskId), ASSIGNED, Optional.<String>absent());
+    stateManager.changeState(Query.taskScoped(taskId), RUNNING, Optional.<String>absent());
+    stateManager.changeState(Query.taskScoped(taskId), FAILED, Optional.<String>absent());
   }
 
   private void expectStateTransitions(
