@@ -677,7 +677,7 @@ We'd get back:
 
     Hello Tom
 
-We can also use mustached variables as sectional variables. Let's say we
+We can also use {{}} variables as sectional variables. Let's say we
 have:
 
     {{#x}} Testing... {{/x}}
@@ -701,7 +701,7 @@ evaluates to
     tic tac toe
 
 Every Pystachio object has an associated `.bind` method that can bind
-values to Mustache variables. Bindings are not immediately evaluated.
+values to {{}} variables. Bindings are not immediately evaluated.
 Instead, they are evaluated only when the interpolated value of the
 object is necessary, e.g. for performing equality or serializing a
 message over the wire.
