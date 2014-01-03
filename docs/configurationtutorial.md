@@ -346,7 +346,13 @@ There are four optional Task attributes:
     constraint. For example the following requires that the processes
     run in the order `foo`, then `bar`.
 
-        constraints = [Constraint(order("foo", "bar"))]
+        constraints = [Constraint(order=['foo', 'bar'])]  
+
+    There is an `order()` function that takes `order('foo', 'bar', 'baz')`
+    and converts it into `[Constraint(order=['foo', 'bar', 'baz'])]`.
+    `order()` accepts Process name strings `('foo', 'bar')` or the processes
+    themselves, e.g. `foo=Process(name='foo', ...)`, `bar=Process(name='bar', ...)`,
+    `constraints=order(foo, bar)`
 
     Note that Thermos rejects tasks with process cycles.
 
