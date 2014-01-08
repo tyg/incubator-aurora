@@ -559,7 +559,7 @@ set this field unless you are sure of what you are doing.
 In the `Job` object there is a map `constraints` from String to String
 allowing the user to tailor the schedulability of tasks within the job.
 
-Each slave in the cluster is assigned a number of string-valued
+Each slave in the cluster is assigned a set of string-valued
 key/value pairs called attributes. For example, consider the host
 `cluster1-aaa-03-sr2` and its following attributes (given in key:value
 format): `host:cluster1-aaa-03-sr2` and `rack:aaa`.
@@ -602,7 +602,7 @@ Use these constraints sparingly as they can dramatically reduce Tasks' schedulab
 <a name="TemplateNamespaces"></a>Template Namespaces
 ====================================================
 
-Currently, a few Pystashio namespaces have special semantics. Using them
+Currently, a few Pystachio namespaces have special semantics. Using them
 in your configuration allow you to tailor application behavior
 through environment introspection or interact in special ways with the
 Aurora client or Aurora-provided services.
@@ -678,7 +678,7 @@ for values such as `cluster`'s.
 
 Then issue the following commands to create and kill the job, using your own values for the job key.
 
-        `aurora create cluster1/$USER/test/hello_world hello_world.mesos `
+        `aurora create cluster1/$USER/test/hello_world hello_world.aurora`
 
         `aurora kill cluster1/$USER/test/hello_world `
 
