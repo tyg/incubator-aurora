@@ -262,10 +262,3 @@ Example:
 5. If desired, write your `generic_hook` definition as part of an object definition in your `.aurora` config file. Remember, the object must be listed as a member of `hooks`.
 
 6. If your Aurora command line command does not otherwise take an `.aurora` config file argument, add the appropriate `.aurora` file as an argument in order to define and activate the configuration's hooks.
-
-
-
-
-
-
-
