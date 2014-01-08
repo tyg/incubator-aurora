@@ -287,16 +287,3 @@ you there.
 command help, `aurora help [command]`. **Note**: `aurora help open`
 returns `"subcommand open not found"` due to our reflection tricks not
 working on words that are also builtin Python function names. Or see the [Aurora Client Commands](clientcommands.md) document.
-
-
-
-
-
-
-
-
-
-
-
-
- 
