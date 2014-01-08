@@ -131,10 +131,10 @@ bound values for the variables.
 
         # not always necessary but often useful to have separate task
         # resource classes
- 	staging_task = base_task(resources =
-                                   Resources(cpu = 1.0,
-                                             ram = 2048*MB,
-                                             disk = 1*GB))
+        staging_task = base_task(resources =
+                         Resources(cpu = 1.0,
+                                   ram = 2048*MB,
+                                   disk = 1*GB))
 	production_task = base_task(resources =
                             Resources(cpu = 4.0,
                                       ram = 2560*MB,
