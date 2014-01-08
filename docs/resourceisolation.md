@@ -147,7 +147,3 @@ Other resources, such as network bandwidth, do not have any performance
 guarantees. For some resources, such as memory bandwidth, there are no
 practical sharing methods so some application combinations collocated on
 the same host may cause contention.
-
-
-
-
