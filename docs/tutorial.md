@@ -249,10 +249,3 @@ Now that you've finished this Tutorial, you should read or do the following:
     Thermos work "under the hood".
 -   Explore the Aurora Client - use the `aurora help` subcommand, and read the
     [Aurora Client Commands](clientcommands.md) document.
-
-
-
-
-
-
-
