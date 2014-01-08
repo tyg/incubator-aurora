@@ -57,7 +57,7 @@ Aurora Jobs.
 -------------------------------
 
 A job key is a unique system-wide identifier for an Aurora-managed
-Job, for example `cluster1/ads/test/experiment204`. It is a 4-tuple
+Job, for example `cluster1/web-team/test/experiment204`. It is a 4-tuple
 consisting of, in order, *cluster*, *role*, *environment*, and
 *jobname*, separated by /s. Cluster is the name of an Aurora
 cluster. Role is the Unix service account under which the Job
@@ -93,11 +93,11 @@ the machine executing Aurora commands.
 
 Hooks can be associated with these Aurora Client commands.
 
--   `cancel_update`
--   `create`
--   `kill`
--   `restart`
--   `update`
+  - `cancel_update`
+  - `create`
+  - `kill`
+  - `restart`
+  - `update`
 
 The process for writing and activating them is complex enough
 that we explain it in a devoted document, [Hooks for Aurora Client API](hooks.md).
@@ -215,12 +215,8 @@ used to define and activate hooks for `update`.
 ### <a name="Renaming"></a>Renaming a Job
 
 Renaming is a tricky operation as downstream clients must be informed of
-the new name. Additionally, container stats continuity is lost and
-service proxy links break. Despite that, legacy naming schemes are
-an insidious form of technical debt that can confuse current and future
-developers years into the future (see
-[creat(2)](http://linux.die.net/man/2/creat)). A conservative approach
-to renaming that is suitable for production services follows: 
+the new name. A conservative approach
+to renaming suitable for production services is: 
 
 1.  Modify the Aurora configuration file to change the role,
     environment, and/or name as appropriate to the standardized naming
@@ -459,4 +455,3 @@ run the command in the executor's sandbox. This is mostly useful for
 Aurora administrators.
 
 You can parallelize the runs by using the `-t` option.
-
