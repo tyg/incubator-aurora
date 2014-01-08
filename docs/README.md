@@ -1,6 +1,6 @@
 # Overview
 
-*Aurora* is a service scheduler that schedules jobs onto *Mesos*, which runs tasks at a specified datacenter. Typical services consist of up to hundreds of task replicas.
+*Aurora* is a service scheduler that schedules jobs onto *Mesos*, which runs tasks at a specified cluster. Typical services consist of up to hundreds of task replicas.
 
 Aurora provides a *Job* abstraction consisting of a *Task* template and instructions for creating near-identical replicas of that Task (modulo things like "instance id" or specific port numbers which may differ from machine to machine). 
 
@@ -14,13 +14,7 @@ To use and get up to speed on Aurora, you should look the docs in this directory
 2. As a user, get started quickly with a [Tutorial](tutorial.md).
 3. For an overview of Aurora's process flow under the hood, see the [User Guide](userguide.md).
 4. To learn how to write a configuration file, look at our [Configuration Tutorial](configurationtutorial.md). From there, look at the [Aurora + Thermos Reference](configurationreference.md).
-5. Then read up on the [Aurora Command Line Client](clientcommands.md). 
+5. Then read up on the [Aurora Command Line Client](clientcommands.md).  
 6. Find out general information and useful tips about how Aurora does [Resource Isolation](resourceisolation.md).
 
-To contact the Aurora Developer List, email [dev@aurora.incubator.apache.org](mailto:dev@aurora.incubator.apache.org).
-
-
-
-
-
-
+To contact the Aurora Developer List, email [dev@aurora.incubator.apache.org](mailto:dev@aurora.incubator.apache.org). You may want to read the list [archives](http://mail-archives.apache.org/mod_mbox/incubator-aurora-dev/). You can also use the IRC channel `#aurora` on `irc.freenode.net` 
